@@ -99,7 +99,7 @@ def parse_args():
     # ── System configuration ─────────────────────────────────────────────────
     parser.add_argument("--max_tokens", type=int, default=8192,
                         help="Max tokens for LLM responses (thinking models need more)")
-    parser.add_argument("--playbook_token_budget", type=int, default=40000,
+    parser.add_argument("--playbook_token_budget", type=int, default=10000,
                         help="Token budget for playbook")
     parser.add_argument("--test_workers", type=int, default=20,
                         help="Parallel workers for test evaluation")

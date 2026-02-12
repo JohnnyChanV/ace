@@ -6,11 +6,32 @@ llm.py
 This file contains the LLM class for the project.
 
 """
+import re
 import time
 import random
 from datetime import datetime
 import openai
 from logger import log_llm_call, log_problematic_request
+
+
+def strip_thinking_tokens(text: str) -> str:
+    """Strip <think>...</think> blocks from thinking-model responses.
+    
+    Handles:
+      - Complete blocks:  <think>...</think>  (content)
+      - Unclosed blocks:  <think>...          (thinking was truncated)
+      - Missing open tag: ...text...</think>  (vLLM sometimes strips <think>)
+      - Multiple blocks
+    """
+    # Case 1: Complete <think>...</think> blocks
+    text = re.sub(r'<think>.*?</think>\s*', '', text, flags=re.DOTALL)
+    # Case 2: Unclosed <think> (truncated)
+    text = re.sub(r'<think>.*', '', text, flags=re.DOTALL)
+    # Case 3: vLLM stripped opening <think> but kept </think>
+    #          → everything before </think> is thinking content, take what's after
+    if '</think>' in text:
+        text = text.split('</think>')[-1]
+    return text.strip()
 
 def timed_llm_call(client, api_provider, model, prompt, role, call_id, max_tokens=4096, log_dir=None,
                    sleep_seconds=15, retries_on_timeout=1000, attempt=1, use_json_mode=False):
@@ -84,10 +105,14 @@ def timed_llm_call(client, api_provider, model, prompt, role, call_id, max_token
             
             response_time = time.time()
             total_time = response_time - start_time
-            response_content = response.choices[0].message.content
+            raw_response_content = response.choices[0].message.content
             
-            if response_content is None:
+            if raw_response_content is None:
                 raise Exception("API returned None content")
+            
+            # Strip <think>...</think> blocks from thinking-model output
+            # Keep the raw version in call_info for debugging
+            response_content = strip_thinking_tokens(raw_response_content)
             
             call_info = {
                 "role": role,
@@ -95,17 +120,20 @@ def timed_llm_call(client, api_provider, model, prompt, role, call_id, max_token
                 "model": model,
                 "prompt": prompt,
                 "response": response_content,
+                "response_raw": raw_response_content,
                 "prompt_time": prompt_time - start_time,
                 "response_time": response_time - prompt_time,
                 "total_time": total_time,
                 "call_time": call_end - call_start,
                 "prompt_length": len(prompt),
                 "response_length": len(response_content),
+                "raw_response_length": len(raw_response_content),
                 "prompt_num_tokens": response.usage.prompt_tokens,
                 "response_num_tokens": response.usage.completion_tokens,
             }
             
-            print(f"[{role.upper()}] Call {call_id} completed in {total_time:.2f}s")
+            print(f"[{role.upper()}] Call {call_id} completed in {total_time:.2f}s "
+                  f"(raw={len(raw_response_content)}, clean={len(response_content)})")
             
             if log_dir:
                 log_llm_call(log_dir, call_info)
