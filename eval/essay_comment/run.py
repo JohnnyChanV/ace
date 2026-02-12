@@ -164,7 +164,7 @@ def main():
         args.max_val_samples = args.max_val_samples or 30
         args.max_test_samples = args.max_test_samples or 50
         args.max_num_rounds = 1
-        args.curator_frequency = 5
+        args.curator_frequency = 1
         args.eval_steps = 25
         args.save_steps = 25
         args.max_tokens = 8192
