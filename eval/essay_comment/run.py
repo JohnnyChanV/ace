@@ -71,6 +71,17 @@ def parse_args():
                         default="Qwen/Qwen3-4B-Thinking-2507",
                         help="Model for the curator agent")
 
+    # ── Pilot mode (fast sanity check) ──────────────────────────────────────
+    parser.add_argument("--pilot", action="store_true",
+                        help="Pilot mode: train=50, val=30, test=50, "
+                             "max_rounds=1, curator_freq=5, eval_steps=25")
+    parser.add_argument("--max_train_samples", type=int, default=None,
+                        help="Truncate train set (default: use all)")
+    parser.add_argument("--max_val_samples", type=int, default=None,
+                        help="Truncate val set (default: use all)")
+    parser.add_argument("--max_test_samples", type=int, default=None,
+                        help="Truncate test set (default: use all)")
+
     # ── Training configuration ───────────────────────────────────────────────
     parser.add_argument("--num_epochs", type=int, default=1,
                         help="Number of training epochs")
@@ -147,6 +158,19 @@ def load_initial_playbook(path):
 def main():
     args = parse_args()
 
+    # ── Pilot mode: override for fast sanity check ─────────────────────────
+    if args.pilot:
+        args.max_train_samples = args.max_train_samples or 50
+        args.max_val_samples = args.max_val_samples or 30
+        args.max_test_samples = args.max_test_samples or 50
+        args.max_num_rounds = 1
+        args.curator_frequency = 5
+        args.eval_steps = 25
+        args.save_steps = 25
+        args.max_tokens = 1024
+        args.playbook_token_budget = 10000
+        args.test_workers = 4
+
     # ── Parse local ports ──────────────────────────────────────────────────
     local_ports = None
     if args.api_provider == "local":
@@ -154,6 +178,8 @@ def main():
 
     print(f"\n{'='*60}")
     print(f"ACE SYSTEM — Essay Comment Explanation Classification")
+    if args.pilot:
+        print(f"  *** PILOT MODE (fast sanity check) ***")
     print(f"{'='*60}")
     print(f"Task      : {args.task_name}")
     print(f"Mode      : {args.mode.upper().replace('_', ' ')}")
@@ -173,6 +199,17 @@ def main():
     train_samples, val_samples, test_samples, data_processor = preprocess_data(
         args.task_name, task_config[args.task_name], args.mode
     )
+
+    # ── Truncate data if requested ───────────────────────────────────────────
+    if args.max_train_samples and train_samples:
+        train_samples = train_samples[:args.max_train_samples]
+        print(f"Truncated train → {len(train_samples)} samples")
+    if args.max_val_samples and val_samples:
+        val_samples = val_samples[:args.max_val_samples]
+        print(f"Truncated val   → {len(val_samples)} samples")
+    if args.max_test_samples and test_samples:
+        test_samples = test_samples[:args.max_test_samples]
+        print(f"Truncated test  → {len(test_samples)} samples")
 
     # ── Load initial playbook ────────────────────────────────────────────────
     initial_playbook = load_initial_playbook(args.initial_playbook_path)
