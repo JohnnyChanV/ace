@@ -101,7 +101,7 @@ def parse_args():
                         help="Max tokens for LLM responses (thinking models need more)")
     parser.add_argument("--playbook_token_budget", type=int, default=10000,
                         help="Token budget for playbook")
-    parser.add_argument("--test_workers", type=int, default=48,
+    parser.add_argument("--test_workers", type=int, default=480,
                         help="Parallel workers for test evaluation")
 
     # ── Prompt / output configuration ────────────────────────────────────────
@@ -169,7 +169,7 @@ def main():
         args.save_steps = 25
         args.max_tokens = 8192
         args.playbook_token_budget = 10000
-        args.test_workers = 48
+        args.test_workers = 480
 
     # ── Parse local ports ──────────────────────────────────────────────────
     local_ports = None
