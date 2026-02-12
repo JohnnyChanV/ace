@@ -3,24 +3,29 @@
 ACE runner for the essay comment explanation classification task.
 
 Usage examples:
-    # Offline mode (train → validate → test)
+    # ── Local vLLM (load-balanced across ports 8000-8004) ─────────────
     python -m eval.essay_comment.run \
         --task_name essay_comment \
         --mode offline \
-        --api_provider sambanova \
+        --api_provider local \
+        --local_ports 8000,8001,8002,8003,8004 \
+        --generator_model Qwen/Qwen3-4B-Thinking-2507 \
+        --reflector_model Qwen/Qwen3-4B-Thinking-2507 \
+        --curator_model Qwen/Qwen3-4B-Thinking-2507 \
         --save_path ./results/essay_comment
 
-    # Online mode (learn and evaluate on test set in windows)
+    # ── Online mode ───────────────────────────────────────────────────
     python -m eval.essay_comment.run \
         --task_name essay_comment \
         --mode online \
-        --api_provider sambanova \
+        --api_provider local \
         --save_path ./results/essay_comment_online
 
-    # Eval-only mode (test with a pre-trained playbook)
+    # ── Eval-only mode (with a pre-trained playbook) ──────────────────
     python -m eval.essay_comment.run \
         --task_name essay_comment \
         --mode eval_only \
+        --api_provider local \
         --initial_playbook_path ./results/essay_comment/final_playbook.txt \
         --save_path ./results/essay_comment_eval
 """
@@ -50,17 +55,20 @@ def parse_args():
                         help="Run mode")
 
     # ── Model configuration ──────────────────────────────────────────────────
-    parser.add_argument("--api_provider", type=str, default="sambanova",
-                        choices=["sambanova", "together", "openai"],
-                        help="API provider")
+    parser.add_argument("--api_provider", type=str, default="local",
+                        choices=["sambanova", "together", "openai", "local"],
+                        help="API provider ('local' for vLLM on localhost)")
+    parser.add_argument("--local_ports", type=str, default="8000,8001,8002,8003",
+                        help="Comma-separated ports for local vLLM load balancing "
+                             "(default: 8000,8001,8002,8003)")
     parser.add_argument("--generator_model", type=str,
-                        default="DeepSeek-V3.1",
+                        default="Qwen/Qwen3-4B-Thinking-2507",
                         help="Model for the generator agent")
     parser.add_argument("--reflector_model", type=str,
-                        default="DeepSeek-V3.1",
+                        default="Qwen/Qwen3-4B-Thinking-2507",
                         help="Model for the reflector agent")
     parser.add_argument("--curator_model", type=str,
-                        default="DeepSeek-V3.1",
+                        default="Qwen/Qwen3-4B-Thinking-2507",
                         help="Model for the curator agent")
 
     # ── Training configuration ───────────────────────────────────────────────
@@ -139,6 +147,11 @@ def load_initial_playbook(path):
 def main():
     args = parse_args()
 
+    # ── Parse local ports ──────────────────────────────────────────────────
+    local_ports = None
+    if args.api_provider == "local":
+        local_ports = [int(p.strip()) for p in args.local_ports.split(",") if p.strip()]
+
     print(f"\n{'='*60}")
     print(f"ACE SYSTEM — Essay Comment Explanation Classification")
     print(f"{'='*60}")
@@ -148,6 +161,8 @@ def main():
     print(f"Reflector : {args.reflector_model}")
     print(f"Curator   : {args.curator_model}")
     print(f"Provider  : {args.api_provider}")
+    if local_ports:
+        print(f"Ports     : {local_ports}")
     print(f"{'='*60}\n")
 
     # ── Load data ────────────────────────────────────────────────────────────
@@ -176,6 +191,7 @@ def main():
         initial_playbook=initial_playbook,
         use_bulletpoint_analyzer=args.use_bulletpoint_analyzer,
         bulletpoint_analyzer_threshold=args.bulletpoint_analyzer_threshold,
+        local_ports=local_ports,
     )
 
     # ── Build run config ─────────────────────────────────────────────────────

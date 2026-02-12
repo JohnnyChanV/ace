@@ -39,7 +39,8 @@ class ACE:
         max_tokens: int = 4096,
         initial_playbook: Optional[str] = None,
         use_bulletpoint_analyzer: bool = False,
-        bulletpoint_analyzer_threshold: float = 0.90
+        bulletpoint_analyzer_threshold: float = 0.90,
+        local_ports: Optional[List[int]] = None
     ):
         """
         Initialize the ACE system.
@@ -53,9 +54,12 @@ class ACE:
             initial_playbook: Initial playbook content (optional)
             use_bulletpoint_analyzer: Whether to use bulletpoint analyzer for deduplication
             bulletpoint_analyzer_threshold: Similarity threshold for bulletpoint analyzer (0-1)
+            local_ports: List of ports for local vLLM load balancing (only used when api_provider='local')
         """
         # Initialize API clients
-        generator_client, reflector_client, curator_client = initialize_clients(api_provider)
+        generator_client, reflector_client, curator_client = initialize_clients(
+            api_provider, local_ports=local_ports
+        )
 
         # Initialize the three agents
         self.generator = Generator(generator_client, api_provider, generator_model, max_tokens)

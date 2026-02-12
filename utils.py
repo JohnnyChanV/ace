@@ -2,6 +2,7 @@
 import os
 import re
 import json
+import threading
 import openai
 import tiktoken
 from dotenv import load_dotenv
@@ -11,8 +12,81 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # Load environment variables from .env file
 load_dotenv()
 
-def initialize_clients(api_provider):
-    """Initialize separate clients for generator, reflector, and curator"""
+# ── Default local vLLM ports (can be overridden via LOCAL_VLLM_PORTS env var) ─
+_DEFAULT_LOCAL_PORTS = [8000, 8001, 8002, 8003]
+
+
+class _ChatCompletions:
+    """Proxy that delegates .create() to the next client in the pool."""
+
+    def __init__(self, pool: "LoadBalancedOpenAI"):
+        self._pool = pool
+
+    def create(self, **kwargs):
+        client = self._pool._next_client()
+        return client.chat.completions.create(**kwargs)
+
+
+class _Chat:
+    """Proxy so that `lb_client.chat.completions.create(...)` works."""
+
+    def __init__(self, pool: "LoadBalancedOpenAI"):
+        self.completions = _ChatCompletions(pool)
+
+
+class LoadBalancedOpenAI:
+    """
+    Drop-in replacement for ``openai.OpenAI`` that round-robins requests
+    across multiple local vLLM endpoints.
+
+    Thread-safe: uses a lock around the counter so concurrent workers
+    (e.g. ``ThreadPoolExecutor`` in ``evaluate_test_set``) are handled.
+    """
+
+    def __init__(self, ports: List[int], api_key: str = "EMPTY"):
+        self._clients = [
+            openai.OpenAI(api_key=api_key, base_url=f"http://localhost:{p}/v1")
+            for p in ports
+        ]
+        self._lock = threading.Lock()
+        self._index = 0
+        self.chat = _Chat(self)
+        print(f"  LoadBalancedOpenAI: {len(self._clients)} backends "
+              f"(ports {ports})")
+
+    def _next_client(self) -> openai.OpenAI:
+        with self._lock:
+            client = self._clients[self._index % len(self._clients)]
+            self._index += 1
+        return client
+
+
+def _parse_local_ports() -> List[int]:
+    """
+    Read ports from the LOCAL_VLLM_PORTS env-var (comma-separated) or
+    fall back to the built-in defaults.
+    """
+    env = os.getenv("LOCAL_VLLM_PORTS", "")
+    if env.strip():
+        return [int(p.strip()) for p in env.split(",") if p.strip()]
+    return list(_DEFAULT_LOCAL_PORTS)
+
+
+def initialize_clients(api_provider, local_ports=None):
+    """Initialize separate clients for generator, reflector, and curator.
+
+    For ``api_provider="local"`` a :class:`LoadBalancedOpenAI` wrapper is
+    returned that round-robins across the given *local_ports* (defaults
+    to 8000-8004 or the ``LOCAL_VLLM_PORTS`` environment variable).
+    """
+    if api_provider == "local":
+        ports = local_ports or _parse_local_ports()
+        print(f"Using LOCAL vLLM endpoints on ports {ports}")
+        generator_client = LoadBalancedOpenAI(ports)
+        reflector_client = LoadBalancedOpenAI(ports)
+        curator_client = LoadBalancedOpenAI(ports)
+        return generator_client, reflector_client, curator_client
+
     if api_provider == "sambanova":
         # Use SambaNova API
         base_url = "https://api.sambanova.ai/v1"
@@ -32,13 +106,14 @@ def initialize_clients(api_provider):
         if not api_key:
             raise ValueError("OpenAI api key not found in environment variables")
     else:
-        raise ValueError((f"Invalid api_provider name: {api_provider}. Must be 'sambanova', 'together', or 'openai'"))
+        raise ValueError(f"Invalid api_provider name: {api_provider}. "
+                         f"Must be 'sambanova', 'together', 'openai', or 'local'")
         
     generator_client = openai.OpenAI(api_key=api_key, base_url=base_url)
     reflector_client = openai.OpenAI(api_key=api_key, base_url=base_url)
     curator_client = openai.OpenAI(api_key=api_key, base_url=base_url)
     
-    print("Using Together API for all models")
+    print(f"Using {api_provider} API for all models")
     return generator_client, reflector_client, curator_client
 
 def get_section_slug(section_name):
