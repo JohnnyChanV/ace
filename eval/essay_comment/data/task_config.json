@@ -1,0 +1,7 @@
+{
+    "essay_comment": {
+        "train_data": "./eval/essay_comment/data/train.jsonl",
+        "val_data": "./eval/essay_comment/data/val.jsonl",
+        "test_data": "./eval/essay_comment/data/test.jsonl"
+    }
+}
