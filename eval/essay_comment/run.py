@@ -97,8 +97,8 @@ def parse_args():
                         help="Save intermediate playbooks every N steps")
 
     # ── System configuration ─────────────────────────────────────────────────
-    parser.add_argument("--max_tokens", type=int, default=2048,
-                        help="Max tokens for LLM responses (binary cls needs fewer)")
+    parser.add_argument("--max_tokens", type=int, default=8192,
+                        help="Max tokens for LLM responses (thinking models need more)")
     parser.add_argument("--playbook_token_budget", type=int, default=40000,
                         help="Token budget for playbook")
     parser.add_argument("--test_workers", type=int, default=20,
@@ -167,7 +167,7 @@ def main():
         args.curator_frequency = 5
         args.eval_steps = 25
         args.save_steps = 25
-        args.max_tokens = 1024
+        args.max_tokens = 8192
         args.playbook_token_budget = 10000
         args.test_workers = 4
 
